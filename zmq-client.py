@@ -2,19 +2,24 @@ from time import sleep
 import zmq
 import time
 import random
+import threading
 from argparse import ArgumentParser
 
 REQUEST_TIMEOUT = 1000  # msecs
 
 # dictionary to store unacknowledged messages
 messages = {}
+sequence = 0
 
-def get_message():
-    #+ random.randrange(-3,3)
-    #if (int(time.time())+ random.randrange(-3,3)) % 10 == 0:
-    if (True):
+# generates a message every second
+def message_generator():
+    global messages, sequence
+
+    while True:
         msg = "Speed : " + str(random.randrange(70,120))
-    return msg
+        messages[sequence] = msg
+        sequence += 1
+        sleep(1)
 
 # Message syntax:
 # ID, Sequence, Message
@@ -22,6 +27,14 @@ def handle_response(response):
     return response.decode("utf-8").split(',')
 
 def main():
+
+    # TODO: load previous state from file
+    global messages
+
+    # start message generator
+    generator_thread = threading.Thread(target=message_generator)
+    generator_thread.daemon=True
+    generator_thread.start()
 
     # get sensor id
     parser = ArgumentParser()
@@ -37,21 +50,14 @@ def main():
     poller = zmq.Poller()
     poller.register(client, zmq.POLLIN)
 
-    # TODO: load previous state from file
-    sequence = 0
-
     # send / recieve loop
     while True:
 
         # print number of unsent messages
         print( "I: Number of unsent messages:", len(messages) )
 
-        # save a new message to dictionary
-        messages[sequence] = get_message()
-        sequence += 1
-
         # send all unacknowledged messages
-        for seq, msg in messages.items():
+        for seq, msg in list(messages.items()):
             client.send_string("%s," % str(args.id) + "%s," % seq + "%s" % msg)
 
         # recieve loop
@@ -72,22 +78,23 @@ def main():
                     # message was delivered, delete from storage
                     messages.pop(int(reply[1]), None)
 
+                elif msg_recieved == 0: # we didn't recieve any messages, server may be down
+                    # print("W: no response from server, failing over")
+                    # poller.unregister(client)
+                    # client.close()
+                    # server_nbr = (server_nbr + 1) % len(server)
+                    # print("I: connecting to server at %s.." % server[server_nbr])
+                    # client = ctx.socket(zmq.REQ)
+                    # poller.register(client, zmq.POLLIN)
+                    # # reconnect
+                    # client.connect(server[server_nbr])
+                    # sleep(1)
+                    break
                 else: # no more messages available
                     break
 
             except:
                 break # Interrupted
-
-        # TODO: handle server failure
-        # print("W: no response from server, failing over")
-        # poller.unregister(client)
-        # client.close()
-        # server_nbr = (server_nbr + 1) % len(server)
-        # print("I: connecting to server at %s.." % server[server_nbr])
-        # client = ctx.socket(zmq.REQ)
-        # poller.register(client, zmq.POLLIN)
-        # # reconnect
-        # client.connect(server[server_nbr])
 
         # Sleep shortly when not sending to save CPU from Xploding
         sleep(0.25)
