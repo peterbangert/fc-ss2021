@@ -63,38 +63,34 @@ def main():
         # recieve loop
         msg_recieved = 0
         while True:
-            try:
-                socks = dict(poller.poll(REQUEST_TIMEOUT))
-                if socks.get(client) == zmq.POLLIN:
+            socks = dict(poller.poll(REQUEST_TIMEOUT))
+            if socks.get(client) == zmq.POLLIN:
 
-                    # check that at least one message was recieved
-                    msg_recieved += 1
+                # check that at least one message was recieved
+                msg_recieved += 1
 
-                    # recieve response
-                    msg = client.recv_multipart()
-                    reply = handle_response(msg[0])
-                    print("I: server replied OK (%s)" % reply)
+                # recieve response
+                msg = client.recv_multipart()
+                reply = handle_response(msg[0])
+                print("I: server replied OK (%s)" % reply)
 
-                    # message was delivered, delete from storage
-                    messages.pop(int(reply[1]), None)
+                # message was delivered, delete from storage
+                messages.pop(int(reply[1]), None)
 
-                elif msg_recieved == 0: # we didn't recieve any messages, server may be down
-                    # print("W: no response from server, failing over")
-                    # poller.unregister(client)
-                    # client.close()
-                    # server_nbr = (server_nbr + 1) % len(server)
-                    # print("I: connecting to server at %s.." % server[server_nbr])
-                    # client = ctx.socket(zmq.REQ)
-                    # poller.register(client, zmq.POLLIN)
-                    # # reconnect
-                    # client.connect(server[server_nbr])
-                    # sleep(1)
-                    break
-                else: # no more messages available
-                    break
+            elif msg_recieved == 0: # we didn't recieve any messages, server may be down
+                print("W: no response from server, failing over")
+                poller.unregister(client)
+                client.close()
+                server_nbr = (server_nbr + 1) % len(server)
+                print("I: Attempting to connect to server at %s.." % server[server_nbr])
+                client = ctx.socket(zmq.DEALER)
+                poller.register(client, zmq.POLLIN)
+                # reconnect
+                client.connect(server[server_nbr])
+                break
+            else: # no more messages available
+                break
 
-            except:
-                break # Interrupted
 
         # Sleep shortly when not sending to save CPU from Xploding
         sleep(0.25)
