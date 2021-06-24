@@ -4,8 +4,8 @@
 
 from argparse import ArgumentParser
 import time
-
 from zhelpers import zmq
+from collections import defaultdict
 
 STATE_PRIMARY = 1
 STATE_BACKUP = 2
@@ -20,6 +20,8 @@ CLIENT_REQUEST = 5
 
 HEARTBEAT = 1000
 
+# store incoming messages from sensors according to their id
+messages_to_acknowledge = defaultdict(dict)
 
 class BStarState(object):
     def __init__(self, state, event, peer_expiry):
@@ -77,6 +79,10 @@ def run_fsm(fsm):
         print(msg)
         fsm.state = state
 
+# Message syntax:
+# ID, Sequence, Message
+def handle_response(response):
+    return response.decode("utf-8").split(',')
 
 def main():
     parser = ArgumentParser()
@@ -118,12 +124,24 @@ def main():
             time_left = 0
         socks = dict(poller.poll(time_left))
         if socks.get(frontend) == zmq.POLLIN:
+
+            fsm.event = CLIENT_REQUEST
             msg = frontend.recv_multipart()
             print("I: client message (%s)" % msg)
-            fsm.event = CLIENT_REQUEST
+
+            # parse and save message
+            parsed_message = handle_response(msg[1])
+            sensor_id = parsed_message[0]
+            sequence = parsed_message[1]
+            messages_to_acknowledge[sensor_id][sequence] = msg
+
             try:
                 run_fsm(fsm)
-                frontend.send_multipart(msg)
+                # send all smessages
+                for seq, m in list(messages_to_acknowledge[sensor_id].items()):
+                    frontend.send_multipart(m)
+                    del messages_to_acknowledge[sensor_id][seq]
+                #frontend.send_multipart(msg)
             except BStarException:
                 del msg
 
