@@ -6,6 +6,8 @@ from argparse import ArgumentParser
 import time
 from zhelpers import zmq
 from collections import defaultdict
+import json
+import copy
 
 STATE_PRIMARY = 1
 STATE_BACKUP = 2
@@ -140,6 +142,57 @@ def handle_average_ack(message):
     for i in range(min(client_responses.keys()),min(client_response_acks.values())):
         del client_responses[i]
 
+
+def read_replica_dict():
+    try:
+        with open('replicaDict.json') as json_file:
+            read_dict = json.load(json_file)
+            for sen, seq in list(read_dict.items()):
+                for seq2 in list(seq.items()):
+                    seq2[1][0] = seq2[1][0].encode()
+        return read_dict
+    except IOError:
+        return defaultdict(dict)
+
+
+def write_replica_dict(read_dict):
+    with open('replicaDict.json', "w") as outfile:
+        dict2 = copy.deepcopy(read_dict)
+        if len(read_dict) > 0:
+            for sen, seq in list(dict2.items()):
+                for seq2 in list(seq.items()):
+                    seq2[1][0] = seq2[1][0].decode('unicode-escape')
+                    seq2[1][1] = seq2[1][1].decode('unicode-escape')
+        json.dump(dict2, outfile)
+
+
+def read_replica_list(sensor_id):
+
+    file_name = str(sensor_id) + '_replicaList.json'
+    try:
+        with open(file_name) as json_file:
+            read_list = json.load(json_file)
+            # for list_items in read_list:
+            #     sen = sen.encode()
+            #     seq = seq.encode()
+            return read_list
+    except IOError:
+        return []
+
+
+def write_replica_list(read_list, sensor_id):
+
+    file_name = str(sensor_id) + '_replicaList.json'
+
+    with open(file_name, "w") as outfile:
+        list2 = copy.deepcopy(read_list)
+        # if len(read_list) > 0:
+        #     for list_items in list2:
+        #         list_items[0] = list_items[0].decode('unicode-escape')
+        #         list_items[1] = list_items[1].decode('unicode-escape')
+        json.dump(list2, outfile)
+
+
 def main():
     parser = ArgumentParser()
     group = parser.add_mutually_exclusive_group()
@@ -169,6 +222,9 @@ def main():
         statesub.setsockopt_string(zmq.SUBSCRIBE, u"")
         fsm.state = STATE_BACKUP
 
+    # Store Primary/Backup status
+    server_status = 4
+
     send_state_at = int(time.time() * 1000 + HEARTBEAT)
     poller = zmq.Poller()
     poller.register(frontend, zmq.POLLIN)
@@ -193,6 +249,10 @@ def main():
             sensor_id = parsed_message[0]
             sequence = parsed_message[1]
 
+            # READ REPLICAS IF IT FAILED OVER
+            if server_status == 3:
+                server_status = 4
+
             ## Handle 'Speed' and 'Average' message types
             if parsed_message[2] == 'Average':
                 handle_average_ack(parsed_message)
@@ -202,21 +262,32 @@ def main():
 
             ## Create list of 'Average' Message types to send this client
             to_send = sensor_response(parsed_message)
-
+            # List backup mechanism
+            #replica_list = read_replica_list(sensor_id)
+            #to_send = list(to_send_current)
+            #to_send.extend(x for x in replica_list if x not in to_send)
+            write_replica_list(to_send, sensor_id)
             try:
                 run_fsm(fsm)
-                
+                # Dictionary backup mechanism
+                # replica_dict = read_replica_dict()
+                # messages_to_acknowledge.update(replica_dict)
                 ## Send All Messages
                 for seq, m in list(messages_to_acknowledge[sensor_id].items()):
                     frontend.send_multipart(m)
                     del messages_to_acknowledge[sensor_id][seq]
-                
+                    # Dictionary backup mechanism
+                    write_replica_dict(messages_to_acknowledge)
                 for m in to_send:
                     msg_header[1] = bytes(m, "utf8")
                     frontend.send_multipart(msg_header)
-
+                    del m
+                    write_replica_list(to_send, sensor_id)
             except BStarException:
                 del msg
+        # TRYING TO DETERMINE WHICH ONE IS BEHIND
+        if fsm.state == 3:
+            server_status = 3
 
         if socks.get(statesub) == zmq.POLLIN:
             msg = statesub.recv()
