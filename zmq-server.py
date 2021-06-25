@@ -23,6 +23,13 @@ HEARTBEAT = 1000
 # store incoming messages from sensors according to their id
 messages_to_acknowledge = defaultdict(dict)
 
+# Store the responses to send to clients and clients acks
+client_responses = {}
+client_response_acks = {}
+client_messages = []
+server_sequence = 0
+
+
 class BStarState(object):
     def __init__(self, state, event, peer_expiry):
         self.state = state
@@ -79,10 +86,59 @@ def run_fsm(fsm):
         print(msg)
         fsm.state = state
 
-# Message syntax:
-# ID, Sequence, Message
+###
+#    Message Handler
+#    - split message
+#    - message syntax:
+#        [ID, Sequence, MessageType, Value, Timestamp]
+###
 def handle_response(response):
     return response.decode("utf-8").split(',')
+
+
+###
+#    Handle Speed Messages
+#    - create average speed server response
+#    - average speeds within last 5 seconds
+#    - update sequence hashmap
+#    - create list of messages for particular client based of last ack
+###
+def sensor_response(message):
+    if message[2] != 'Speed': return []
+    client_messages.append(message)
+    cur_time = int(time.time())
+    global server_sequence
+    
+    # Start Tracking Acked sequence if message from new client
+    if int(message[0]) not in client_response_acks:
+        client_response_acks[int(message[0])] = server_sequence
+
+    #pop messages older than 5 seconds
+    while (cur_time - int(client_messages[0][4])) > 5:
+        client_messages.pop(0)
+
+    # Average Speed in last 5 minutes
+    average_speed = int(sum([int(i[3]) for i in client_messages]) / len(client_messages))
+
+    # Create new server message
+    client_responses[server_sequence] =  str(server_sequence) +",Average,"+str(average_speed) + "," + str(cur_time) 
+    server_sequence += 1 
+    
+    # Create message queue for client
+    # between clients last acked and current sequence
+    to_send = [client_responses[i] for i in range( client_response_acks[int(message[0])]+1, server_sequence )]
+    return to_send
+    
+
+###
+#    Handle 'Average' Message Acknowledgments
+#    - update client ack dictionaries
+#    - delete average message buffer based off lowest client ack
+###
+def handle_average_ack(message):
+    client_response_acks[int(message[0])] = max(int(message[1]),client_response_acks[int(message[0])])
+    for i in range(min(client_responses.keys()),min(client_response_acks.values())):
+        del client_responses[i]
 
 def main():
     parser = ArgumentParser()
@@ -129,19 +185,36 @@ def main():
             msg = frontend.recv_multipart()
             print("I: client message (%s)" % msg)
 
+            # Save the Socket Header for Later use
+            msg_header = msg
+
             # parse and save message
             parsed_message = handle_response(msg[1])
             sensor_id = parsed_message[0]
             sequence = parsed_message[1]
-            messages_to_acknowledge[sensor_id][sequence] = msg
+
+            ## Handle 'Speed' and 'Average' message types
+            if parsed_message[2] == 'Average':
+                handle_average_ack(parsed_message)
+                continue
+            else:
+                messages_to_acknowledge[sensor_id][sequence] = msg
+
+            ## Create list of 'Average' Message types to send this client
+            to_send = sensor_response(parsed_message)
 
             try:
                 run_fsm(fsm)
-                # send all smessages
+                
+                ## Send All Messages
                 for seq, m in list(messages_to_acknowledge[sensor_id].items()):
                     frontend.send_multipart(m)
                     del messages_to_acknowledge[sensor_id][seq]
-                #frontend.send_multipart(msg)
+                
+                for m in to_send:
+                    msg_header[1] = bytes(m, "utf8")
+                    frontend.send_multipart(msg_header)
+
             except BStarException:
                 del msg
 
