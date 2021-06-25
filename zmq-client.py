@@ -1,6 +1,6 @@
 from time import sleep
-import zmq
 import time
+import zmq
 import random
 import threading
 from argparse import ArgumentParser
@@ -11,18 +11,25 @@ REQUEST_TIMEOUT = 1000  # msecs
 messages = {}
 sequence = 0
 
-# generates a message every second
+###
+#    Generate Message 
+#    - random speed within 70 to 120 kph
+#    - add timestamp
+###
 def message_generator():
     global messages, sequence
 
     while True:
-        msg = "Speed : " + str(random.randrange(70,120))
+        msg = "Speed," + str(random.randrange(70,120)) + "," + str(int(time.time()))
         messages[sequence] = msg
         sequence += 1
         sleep(1)
 
-# Message syntax:
-# ID, Sequence, Message
+###
+#    Handle 'Average' Message Acknowledgments
+#    - update client ack dictionaries
+#    - delete average message buffer based off lowest client ack
+###
 def handle_response(response):
     return response.decode("utf-8").split(',')
 
@@ -75,7 +82,10 @@ def main():
                 print("I: server replied OK (%s)" % reply)
 
                 # message was delivered, delete from storage
-                messages.pop(int(reply[1]), None)
+                if reply[1] == 'Average':
+                    client.send_string("%s," % str(args.id) + ",".join(reply))
+                else:    
+                    messages.pop(int(reply[1]), None)
 
             elif msg_recieved == 0: # we didn't recieve any messages, server may be down
                 print("W: no response from server, failing over")
