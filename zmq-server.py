@@ -6,6 +6,8 @@ from argparse import ArgumentParser
 import time
 from zhelpers import zmq
 from collections import defaultdict
+import json
+import copy
 
 STATE_PRIMARY = 1
 STATE_BACKUP = 2
@@ -40,21 +42,22 @@ class BStarState(object):
 class BStarException(Exception):
     pass
 
+
 fsm_states = {
     STATE_PRIMARY: {
         PEER_BACKUP: ("I: connected to backup (slave), ready as master",
                       STATE_ACTIVE),
         PEER_ACTIVE: ("I: connected to backup (master), ready as slave",
                       STATE_PASSIVE)
-        },
+    },
     STATE_BACKUP: {
         PEER_ACTIVE: ("I: connected to primary (master), ready as slave",
                       STATE_PASSIVE),
         CLIENT_REQUEST: ("", False)
-        },
+    },
     STATE_ACTIVE: {
         PEER_ACTIVE: ("E: fatal error - dual masters, aborting", False)
-        },
+    },
     STATE_PASSIVE: {
         PEER_PRIMARY: ("I: primary (slave) is restarting, ready as master",
                        STATE_ACTIVE),
@@ -62,8 +65,8 @@ fsm_states = {
                       STATE_ACTIVE),
         PEER_PASSIVE: ("E: fatal error - dual slaves, aborting", False),
         CLIENT_REQUEST: (CLIENT_REQUEST, True)  # Say true, check peer later
-        }
     }
+}
 
 
 def run_fsm(fsm):
@@ -85,6 +88,7 @@ def run_fsm(fsm):
     else:
         print(msg)
         fsm.state = state
+
 
 ###
 #    Message Handler
@@ -108,12 +112,12 @@ def sensor_response(message):
     client_messages.append(message)
     cur_time = int(time.time())
     global server_sequence
-    
+
     # Start Tracking Acked sequence if message from new client
     if int(message[0]) not in client_response_acks:
         client_response_acks[int(message[0])] = server_sequence
 
-    #pop messages older than 5 seconds
+    # pop messages older than 5 seconds
     while (cur_time - int(client_messages[0][4])) > 5:
         client_messages.pop(0)
 
@@ -121,14 +125,14 @@ def sensor_response(message):
     average_speed = int(sum([int(i[3]) for i in client_messages]) / len(client_messages))
 
     # Create new server message
-    client_responses[server_sequence] =  str(server_sequence) +",Average,"+str(average_speed) + "," + str(cur_time) 
-    server_sequence += 1 
-    
+    client_responses[server_sequence] = str(server_sequence) + ",Average," + str(average_speed) + "," + str(cur_time)
+    server_sequence += 1
+
     # Create message queue for client
     # between clients last acked and current sequence
-    to_send = [client_responses[i] for i in range( client_response_acks[int(message[0])]+1, server_sequence )]
+    to_send = [client_responses[i] for i in range(client_response_acks[int(message[0])] + 1, server_sequence)]
     return to_send
-    
+
 
 ###
 #    Handle 'Average' Message Acknowledgments
@@ -136,9 +140,76 @@ def sensor_response(message):
 #    - delete average message buffer based off lowest client ack
 ###
 def handle_average_ack(message):
-    client_response_acks[int(message[0])] = max(int(message[1]),client_response_acks[int(message[0])])
-    for i in range(min(client_responses.keys()),min(client_response_acks.values())):
+    client_response_acks[int(message[0])] = max(int(message[1]), client_response_acks[int(message[0])])
+    for i in range(min(client_responses.keys()), min(client_response_acks.values())):
         del client_responses[i]
+
+
+def write_replica_dict(dict_type, read_dict):
+    # file_name = ""
+    if dict_type == "client_responses":
+        file_name = "replica_client_responses.json"
+    else:
+        file_name = "replica_client_response_acks.json"
+    with open(file_name, "w") as outfile:
+        # dict2 = copy.deepcopy(read_dict)
+        # if len(read_dict) > 0:
+        #     for sen, seq in list(dict2.items()):
+        #         for seq2 in list(seq.items()):
+        #             seq2[1][0] = seq2[1][0].decode('unicode-escape')
+        #             seq2[1][1] = seq2[1][1].decode('unicode-escape')
+        json.dump(read_dict, outfile)
+
+
+def read_replica_dict(dict_type):
+    # file_name = ""
+    if dict_type == "client_responses":
+        file_name = "replica_client_responses.json"
+    else:
+        file_name = "replica_client_response_acks.json"
+    try:
+        with open(file_name) as json_file:
+            read_dict = json.load(json_file)
+            # for sen, seq in list(read_dict.items()):
+            #     for seq2 in list(seq.items()):
+            #         seq2[1][0] = seq2[1][0].encode()
+        return read_dict
+    except IOError:
+        return dict
+
+
+def read_replica_list():
+    try:
+        with open('replica_messages.json') as json_file:
+            read_list = json.load(json_file)
+            # for list_items in read_list:
+            #     sen = sen.encode()
+            #     seq = seq.encode()
+            return read_list
+    except IOError:
+        return []
+
+
+def write_replica_list(read_list):
+    with open('replica_messages.json', "w") as outfile:
+        # list2 = copy.deepcopy(read_list)
+        json.dump(read_list, outfile)
+
+
+def read_replica_number():
+    try:
+        with open('replica_sequence.json') as json_file:
+            read_number = json.load(json_file)
+            return read_number
+    except IOError:
+        return 0
+
+
+def write_replica_number(read_number):
+
+    with open('replica_sequence.json', "w") as outfile:
+        json.dump(read_number, outfile)
+
 
 def main():
     parser = ArgumentParser()
@@ -205,20 +276,38 @@ def main():
 
             try:
                 run_fsm(fsm)
-                
+
                 ## Send All Messages
                 for seq, m in list(messages_to_acknowledge[sensor_id].items()):
                     frontend.send_multipart(m)
                     del messages_to_acknowledge[sensor_id][seq]
-                
+
                 for m in to_send:
                     msg_header[1] = bytes(m, "utf8")
                     frontend.send_multipart(msg_header)
 
             except BStarException:
                 del msg
-
+            # if fsm.state == 3:
+            # DEBUG
+        # print("-----")
+        # print("client_responses")
+        # print(client_responses)
+        # print("client_response_acks")
+        # print(client_response_acks)
+        # print("client_messages")
+        # print(client_messages)
+        # print("client_messages")
+        # print(server_sequence)
+        # print("-----")
         if socks.get(statesub) == zmq.POLLIN:
+            # BACKUP
+            
+            write_replica_dict("client_responses", client_responses)
+            write_replica_dict("client_response_acks", client_response_acks)
+            write_replica_list(client_messages)
+            write_replica_number(server_sequence)
+
             msg = statesub.recv()
             fsm.event = int(msg)
             del msg
@@ -230,6 +319,7 @@ def main():
         if int(time.time() * 1000) >= send_state_at:
             statepub.send_string("%d" % fsm.state)
             send_state_at = int(time.time() * 1000) + HEARTBEAT
+
 
 if __name__ == '__main__':
     main()
