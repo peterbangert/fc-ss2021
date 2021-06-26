@@ -198,17 +198,16 @@ def write_replica_list(read_list):
 
 def read_replica_number():
     try:
-        with open('replica_sequence.json') as json_file:
-            read_number = json.load(json_file)
+        with open('replica_sequence.txt') as txt_file:
+            read_number = int(txt_file.read())
             return read_number
     except IOError:
         return 0
 
 
 def write_replica_number(read_number):
-
-    with open('replica_sequence.json', "w") as outfile:
-        json.dump(read_number, outfile)
+    with open('replica_sequence.txt', "w") as outfile:
+        outfile.write(str(read_number))
 
 
 def main():
@@ -225,6 +224,15 @@ def main():
     frontend = ctx.socket(zmq.ROUTER)
 
     fsm = BStarState(0, 0, 0)
+
+    # Store Primary/Backup status
+    server_status = 4
+
+    # DECLARING GLOBAL VALUES, PREVENTS SHADOWING
+    global client_responses
+    global client_response_acks
+    global client_messages
+    global server_sequence
 
     if args.primary:
         print("I: Primary master, waiting for backup (slave)")
@@ -250,6 +258,30 @@ def main():
         if time_left < 0:
             time_left = 0
         socks = dict(poller.poll(time_left))
+
+
+        # READ REPLICAS IF IT FAILED OVER, RESTORE VALUES
+        if server_status == 3 and fsm.state == 3:
+            print("I AM A STUPID SANDWICH")
+            # PREVENT FOOTGUNNING
+            server_status = 4
+            # RESTORE VALUES FROM PRIMARY
+            client_responses = copy.deepcopy(read_replica_dict("client_responses"))
+            client_response_acks = copy.deepcopy(read_replica_dict("client_response_acks"))
+            client_messages = copy.deepcopy(read_replica_list())
+            server_sequence = copy.deepcopy(read_replica_number())
+
+            print("--REPLICA READ---")
+            print("client_responses")
+            print(read_replica_dict("client_responses"))
+            print("client_response_acks")
+            print(read_replica_dict("client_response_acks"))
+            print("client_messages")
+            print(read_replica_list())
+            print("server_sequence")
+            print(read_replica_number())
+            print("--REPLICA READ---")
+
         if socks.get(frontend) == zmq.POLLIN:
 
             fsm.event = CLIENT_REQUEST
@@ -290,19 +322,23 @@ def main():
                 del msg
             # if fsm.state == 3:
             # DEBUG
-        # print("-----")
-        # print("client_responses")
-        # print(client_responses)
-        # print("client_response_acks")
-        # print(client_response_acks)
-        # print("client_messages")
-        # print(client_messages)
-        # print("client_messages")
-        # print(server_sequence)
-        # print("-----")
+        print("-----")
+        print("client_responses")
+        print(client_responses)
+        print("client_response_acks")
+        print(client_response_acks)
+        print("client_messages")
+        print(client_messages)
+        print("server_sequence")
+        print(server_sequence)
+        print("-----")
+
+        # TRYING TO DETERMINE WHICH ONE IS BEHIND
+        if fsm.state == 4:
+            server_status = 3
+
         if socks.get(statesub) == zmq.POLLIN:
             # BACKUP
-            
             write_replica_dict("client_responses", client_responses)
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
