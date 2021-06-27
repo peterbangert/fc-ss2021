@@ -170,6 +170,7 @@ def read_replica_dict(dict_type):
     try:
         with open(file_name) as json_file:
             read_dict = json.load(json_file)
+            read_dict = {int(k): v for k, v in read_dict.items()}
             # for sen, seq in list(read_dict.items()):
             #     for seq2 in list(seq.items()):
             #         seq2[1][0] = seq2[1][0].encode()
@@ -252,19 +253,17 @@ def main():
     poller = zmq.Poller()
     poller.register(frontend, zmq.POLLIN)
     poller.register(statesub, zmq.POLLIN)
-
     while True:
         time_left = send_state_at - int(time.time() * 1000)
         if time_left < 0:
             time_left = 0
         socks = dict(poller.poll(time_left))
 
-
         # READ REPLICAS IF IT FAILED OVER, RESTORE VALUES
         if server_status == 3 and fsm.state == 3:
             print("I AM A STUPID SANDWICH")
             # PREVENT FOOTGUNNING
-            server_status = 4
+
             # RESTORE VALUES FROM PRIMARY
             client_responses = copy.deepcopy(read_replica_dict("client_responses"))
             client_response_acks = copy.deepcopy(read_replica_dict("client_response_acks"))
@@ -281,6 +280,7 @@ def main():
             print("server_sequence")
             print(read_replica_number())
             print("--REPLICA READ---")
+            server_status = 4
 
         if socks.get(frontend) == zmq.POLLIN:
 
@@ -320,6 +320,8 @@ def main():
 
             except BStarException:
                 del msg
+
+            write_replica_lock = 1
             # if fsm.state == 3:
             # DEBUG
         print("-----")
@@ -337,12 +339,15 @@ def main():
         if fsm.state == 4:
             server_status = 3
 
-        if socks.get(statesub) == zmq.POLLIN:
-            # BACKUP
+        # BACKUP
+        if server_status == 4:  # and write_replica_lock == 1:
             write_replica_dict("client_responses", client_responses)
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
             write_replica_number(server_sequence)
+            write_replica_lock = 0
+
+        if socks.get(statesub) == zmq.POLLIN:
 
             msg = statesub.recv()
             fsm.event = int(msg)
