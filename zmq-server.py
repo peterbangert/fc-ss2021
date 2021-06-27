@@ -233,6 +233,13 @@ def main():
     global client_messages
     global server_sequence
 
+    peer_ip_remote = "192.168.1"
+    peer_running_directory = "/root/"
+    peer_username = "root"
+
+    rsync_command = "rsync -avz replica_client_response_acks.json  replica_client_responses.json  " \
+                    "replica_messages.json  replica_sequence.txt " + peer_username + "@" + peer_ip_remote + ":" + peer_running_directory
+
     if args.primary:
         print("I: Primary master, waiting for backup (slave)")
         frontend.bind("tcp://*:5001")
@@ -318,8 +325,8 @@ def main():
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
             write_replica_number(server_sequence)
-            # TODO: RSYNC LOGIC HERE
-            # os.system("echo test")
+            # Send backed up data to replica
+            os.system(rsync_command)
 
         if socks.get(statesub) == zmq.POLLIN:
             msg = statesub.recv()
