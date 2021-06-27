@@ -8,6 +8,9 @@ from zhelpers import zmq
 from collections import defaultdict
 import json
 import copy
+import os
+import sys
+import subprocess
 
 STATE_PRIMARY = 1
 STATE_BACKUP = 2
@@ -145,22 +148,17 @@ def handle_average_ack(message):
         del client_responses[i]
 
 
+# Back up dictionary
 def write_replica_dict(dict_type, read_dict):
-    # file_name = ""
     if dict_type == "client_responses":
         file_name = "replica_client_responses.json"
     else:
         file_name = "replica_client_response_acks.json"
     with open(file_name, "w") as outfile:
-        # dict2 = copy.deepcopy(read_dict)
-        # if len(read_dict) > 0:
-        #     for sen, seq in list(dict2.items()):
-        #         for seq2 in list(seq.items()):
-        #             seq2[1][0] = seq2[1][0].decode('unicode-escape')
-        #             seq2[1][1] = seq2[1][1].decode('unicode-escape')
         json.dump(read_dict, outfile)
 
 
+# Restore dictionary
 def read_replica_dict(dict_type):
     # file_name = ""
     if dict_type == "client_responses":
@@ -171,32 +169,28 @@ def read_replica_dict(dict_type):
         with open(file_name) as json_file:
             read_dict = json.load(json_file)
             read_dict = {int(k): v for k, v in read_dict.items()}
-            # for sen, seq in list(read_dict.items()):
-            #     for seq2 in list(seq.items()):
-            #         seq2[1][0] = seq2[1][0].encode()
         return read_dict
     except IOError:
         return dict
 
 
+# Back up list
 def read_replica_list():
     try:
         with open('replica_messages.json') as json_file:
             read_list = json.load(json_file)
-            # for list_items in read_list:
-            #     sen = sen.encode()
-            #     seq = seq.encode()
             return read_list
     except IOError:
         return []
 
 
+# Restore list
 def write_replica_list(read_list):
     with open('replica_messages.json', "w") as outfile:
-        # list2 = copy.deepcopy(read_list)
         json.dump(read_list, outfile)
 
 
+# Back up int
 def read_replica_number():
     try:
         with open('replica_sequence.txt') as txt_file:
@@ -206,6 +200,7 @@ def read_replica_number():
         return 0
 
 
+# Restore int
 def write_replica_number(read_number):
     with open('replica_sequence.txt', "w") as outfile:
         outfile.write(str(read_number))
@@ -227,6 +222,9 @@ def main():
     fsm = BStarState(0, 0, 0)
 
     # Store Primary/Backup status
+    # Inherits it's logic from fsm class
+    # 3 = connected to backup server, accepting client connections
+    # 4 = connected to primary server, doesn't accept client connections
     server_status = 4
 
     # DECLARING GLOBAL VALUES, PREVENTS SHADOWING
@@ -261,25 +259,13 @@ def main():
 
         # READ REPLICAS IF IT FAILED OVER, RESTORE VALUES
         if server_status == 3 and fsm.state == 3:
-            print("I AM A STUPID SANDWICH")
-            # PREVENT FOOTGUNNING
-
             # RESTORE VALUES FROM PRIMARY
             client_responses = copy.deepcopy(read_replica_dict("client_responses"))
             client_response_acks = copy.deepcopy(read_replica_dict("client_response_acks"))
             client_messages = copy.deepcopy(read_replica_list())
             server_sequence = copy.deepcopy(read_replica_number())
 
-            print("--REPLICA READ---")
-            print("client_responses")
-            print(read_replica_dict("client_responses"))
-            print("client_response_acks")
-            print(read_replica_dict("client_response_acks"))
-            print("client_messages")
-            print(read_replica_list())
-            print("server_sequence")
-            print(read_replica_number())
-            print("--REPLICA READ---")
+            # Prevents overwriting replicated data
             server_status = 4
 
         if socks.get(frontend) == zmq.POLLIN:
@@ -321,34 +307,21 @@ def main():
             except BStarException:
                 del msg
 
-            write_replica_lock = 1
-            # if fsm.state == 3:
-            # DEBUG
-        print("-----")
-        print("client_responses")
-        print(client_responses)
-        print("client_response_acks")
-        print(client_response_acks)
-        print("client_messages")
-        print(client_messages)
-        print("server_sequence")
-        print(server_sequence)
-        print("-----")
-
         # TRYING TO DETERMINE WHICH ONE IS BEHIND
         if fsm.state == 4:
             server_status = 3
 
         # BACKUP
-        if server_status == 4:  # and write_replica_lock == 1:
+        # Start backing up if the server is connected to a backup server and accepting client messages
+        if server_status == 4:
             write_replica_dict("client_responses", client_responses)
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
             write_replica_number(server_sequence)
-            write_replica_lock = 0
+            # TODO: RSYNC LOGIC HERE
+            # os.system("echo test")
 
         if socks.get(statesub) == zmq.POLLIN:
-
             msg = statesub.recv()
             fsm.event = int(msg)
             del msg
