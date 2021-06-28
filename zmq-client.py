@@ -101,7 +101,8 @@ def main():
                 client = ctx.socket(zmq.DEALER)
                 poller.register(client, zmq.POLLIN)
                 # reconnect
-                client.connect(server[server_nbr])
+                #client.connect(server[server_nbr])
+                ssh.tunnel_connection(client, server[server_nbr],'petbangert@{}'.format(server_ips[server_nbr]))
                 break
             else: # no more messages available
                 break
