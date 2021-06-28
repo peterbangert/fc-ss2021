@@ -6,7 +6,9 @@ This repository contains a fog application that simulates an adaptive speed limi
 
 The domain of this Proof of concept is an Autobahn sensor network, in which roadway sensors are reading the speed of passing cars, sending these readings to a centralized system. The centralized system will then aggregate these speed readings into an average speed within a 5 second window and respond to each client with the most recent average speeds. The idea being that this information can be used for setting adapative speed limits.
 
-
+<p align="center">
+  <img width="600" height="400" src="media/diagram.png">
+</p>
 
 ## Reliable message delivery
 
@@ -45,14 +47,39 @@ With the combination of Acknowledgements, Primary/Replica avaliability and repli
 
 Start the primary and backup cloud servers with the following commands:
 
-`python3 zmq-server.py --primary`
 
-`python3 zmq-server.py --backup`
+```python
+python3 zmq-server.py --help
+usage: zmq-server.py [-h] [-p | -b] [-ip IP] [-u USERNAME] [-rd RSYNCDIR]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -p, --primary         # Server Role
+  -b, --backup          # Server Role
+  -ip IP, --ip IP       # Ip of Peer
+  -u USERNAME, --username USERNAME     # SSH Username
+  -rd RSYNCDIR, --rsyncdir RSYNCDIR    # Target Dir for Rsync
+
+```
+
 
 Start sensors with the client script by passing a unique id:
 
-`python3 zmq-client.py --id 1`
+```python
+python3 zmq-client.py --help
+usage: zmq-client.py [-h] [-id ID] [-ip1 IP1] [-ip2 IP2] [-u USERNAME]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -id ID, --id ID       # Client ID
+  -ip1 IP1, --ip1 IP1   # IP of Server 1
+  -ip2 IP2, --ip2 IP2   # IP of Server 2
+  -u USERNAME, --username USERNAME  # SSH Username
+
+
+```
+
 
 ## Demo
 
-A video demo can be seen in the `file_name` file.
+A video demo can be seen in the `media/demo.mp4` file.
