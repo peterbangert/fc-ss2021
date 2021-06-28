@@ -52,13 +52,13 @@ def main():
     args = parser.parse_args()
 
     # connect to server
-    #server = ['tcp://localhost:5001', 'tcp://localhost:5002']
-    server = ['tcp://{}:5001'.format(args.ip1), 'tcp://{}:5002'.format(args.ip2)]
+    server = ['tcp://localhost:5001', 'tcp://localhost:5002']
+    server_ips = [args.ip1, args.ip2]
     server_nbr = 0
     ctx = zmq.Context()
     client = ctx.socket(zmq.DEALER)
     #client.connect(server[server_nbr])
-    ssh.tunnel_connection(client, server[server_nbr],'petbangert')
+    ssh.tunnel_connection(client, server[server_nbr],'petbangert@{}'.format(server_ips[server_nbr]))
     poller = zmq.Poller()
     poller.register(client, zmq.POLLIN)
 
