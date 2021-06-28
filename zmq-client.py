@@ -4,6 +4,7 @@ import zmq
 import random
 import threading
 from argparse import ArgumentParser
+from zmq import ssh
 
 REQUEST_TIMEOUT = 1000  # msecs
 
@@ -46,14 +47,18 @@ def main():
     # get sensor id
     parser = ArgumentParser()
     parser.add_argument("-id", "--id", type=int, default=1)
+    parser.add_argument("-ip1", "--ip1", type=str, default="localhost")
+    parser.add_argument("-ip2", "--ip2", type=str, default="localhost")
     args = parser.parse_args()
 
     # connect to server
-    server = ['tcp://localhost:5001', 'tcp://localhost:5002']
+    #server = ['tcp://localhost:5001', 'tcp://localhost:5002']
+    server = ['tcp://{}:5001'.format(args.ip1), 'tcp://{}:5002'.format(args.ip2)]
     server_nbr = 0
     ctx = zmq.Context()
     client = ctx.socket(zmq.DEALER)
-    client.connect(server[server_nbr])
+    #client.connect(server[server_nbr])
+    ssh.tunnel_connection(client, server[server_nbr],'petbangert')
     poller = zmq.Poller()
     poller.register(client, zmq.POLLIN)
 
