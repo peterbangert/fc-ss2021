@@ -79,6 +79,23 @@ optional arguments:
 
 ```
 
+## Example Run Locally
+
+Terminal 1
+```
+$ python3 zmq-server.py --primary --username USERNAME
+
+```
+Terminal 2
+```
+$ python3 zmq-server.py --backup --username USERNAME
+
+```
+Terminal 3
+```
+$ python3 zmq-client.py --id 3
+```
+
 
 ## Demo
 
