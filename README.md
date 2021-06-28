@@ -56,9 +56,9 @@ optional arguments:
   -h, --help            show this help message and exit
   -p, --primary         # Server Role
   -b, --backup          # Server Role
-  -ip IP, --ip IP       # Ip of Peer
-  -u USERNAME, --username USERNAME     # SSH Username
-  -rd RSYNCDIR, --rsyncdir RSYNCDIR    # Target Dir for Rsync
+  -ip IP, --ip IP       # Ip of Peer, default localhost
+  -u USERNAME, --username USERNAME     # SSH Username, default petbangert
+  -rd RSYNCDIR, --rsyncdir RSYNCDIR    # Target Dir for Rsync, default ~/fc-ss2021/
 
 ```
 
@@ -72,9 +72,9 @@ usage: zmq-client.py [-h] [-id ID] [-ip1 IP1] [-ip2 IP2] [-u USERNAME]
 optional arguments:
   -h, --help            show this help message and exit
   -id ID, --id ID       # Client ID
-  -ip1 IP1, --ip1 IP1   # IP of Server 1
-  -ip2 IP2, --ip2 IP2   # IP of Server 2
-  -u USERNAME, --username USERNAME  # SSH Username
+  -ip1 IP1, --ip1 IP1   # IP of Server 1, default localhost
+  -ip2 IP2, --ip2 IP2   # IP of Server 2, default localhost
+  -u USERNAME, --username USERNAME  # SSH Username, default petbangert
 
 
 ```

@@ -244,15 +244,23 @@ def main():
         print("I: Primary master, waiting for backup (slave)")
         frontend.bind("tcp://*:5001")
         statepub.bind("tcp://*:5003")
-        #statesub.connect("tcp://localhost:5004")
-        ssh.tunnel_connection(statesub, "tcp://localhost:5004", '{}@{}'.format(args.username,args.ip))
+        
+        if args.ip != 'localhost':
+            ssh.tunnel_connection(statesub, "tcp://localhost:5004", '{}@{}'.format(args.username,args.ip))
+        else:
+            statesub.connect("tcp://localhost:5004")
+        
         fsm.state = STATE_PRIMARY
     elif args.backup:
         print("I: Backup slave, waiting for primary (master)")
         frontend.bind("tcp://*:5002")
         statepub.bind("tcp://*:5004")
-        #statesub.connect("tcp://localhost:5003")
-        ssh.tunnel_connection(statesub, "tcp://localhost:5003", '{}@{}'.format(args.username,args.ip))
+        
+        if args.ip != 'localhost':
+            ssh.tunnel_connection(statesub, "tcp://localhost:5003", '{}@{}'.format(args.username,args.ip))
+        else:
+            statesub.connect("tcp://localhost:5003")
+        
         statesub.setsockopt_string(zmq.SUBSCRIBE, u"")
         fsm.state = STATE_BACKUP
 
