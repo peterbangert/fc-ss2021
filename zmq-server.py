@@ -213,6 +213,7 @@ def main():
     group.add_argument("-p", "--primary", action="store_true", default=False)
     group.add_argument("-b", "--backup", action="store_true", default=False)
     parser.add_argument("-ip", "--ip", type=str, default="localhost")
+    parser.add_argument("-u", "--username", type=str, default="petbangert")
     args = parser.parse_args()
 
     ctx = zmq.Context()
@@ -240,14 +241,14 @@ def main():
         frontend.bind("tcp://*:5001")
         statepub.bind("tcp://*:5003")
         #statesub.connect("tcp://localhost:5004")
-        ssh.tunnel_connection(statesub, "tcp://localhost:5004", 'petbangert@{}'.format(args.ip))
+        ssh.tunnel_connection(statesub, "tcp://localhost:5004", '{}@{}'.format(args.username,args.ip))
         fsm.state = STATE_PRIMARY
     elif args.backup:
         print("I: Backup slave, waiting for primary (master)")
         frontend.bind("tcp://*:5002")
         statepub.bind("tcp://*:5004")
         #statesub.connect("tcp://localhost:5003")
-        ssh.tunnel_connection(statesub, "tcp://localhost:5003", 'petbangert@{}'.format(args.ip))
+        ssh.tunnel_connection(statesub, "tcp://localhost:5003", '{}@{}'.format(args.username,args.ip))
         statesub.setsockopt_string(zmq.SUBSCRIBE, u"")
         fsm.state = STATE_BACKUP
 
