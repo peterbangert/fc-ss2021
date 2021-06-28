@@ -214,7 +214,11 @@ def main():
     group.add_argument("-b", "--backup", action="store_true", default=False)
     parser.add_argument("-ip", "--ip", type=str, default="localhost")
     parser.add_argument("-u", "--username", type=str, default="petbangert")
+    parser.add_argument("-rd", "--rsyncdir", type=str, default="./fc-ss2021")
     args = parser.parse_args()
+
+    rsync_command = "rsync -avz replica_client_response_acks.json  replica_client_responses.json  " \
+                    "replica_messages.json  replica_sequence.txt " + args.username + "@" + args.ip + ":" + args.rsyncdir
 
     ctx = zmq.Context()
     statepub = ctx.socket(zmq.PUB)
@@ -318,13 +322,13 @@ def main():
 
         # BACKUP
         # Start backing up if the server is connected to a backup server and accepting client messages
-        if server_status == 4:
+        if server_status == 4 and fsm.state == 4:
             write_replica_dict("client_responses", client_responses)
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
             write_replica_number(server_sequence)
             # TODO: RSYNC LOGIC HERE
-            # os.system("echo test")
+            os.system(rsync_command)
 
         if socks.get(statesub) == zmq.POLLIN:
             msg = statesub.recv()
