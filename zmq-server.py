@@ -320,7 +320,7 @@ def main():
 
         # BACKUP
         # Start backing up if the server is connected to a backup server and accepting client messages
-        if server_status == 4 and fsm.state == 4:
+        if server_status == 4 and fsm.state == 3:
             write_replica_dict("client_responses", client_responses)
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
