@@ -4,6 +4,7 @@ import zmq
 import random
 import threading
 from argparse import ArgumentParser
+from zmq import ssh
 
 REQUEST_TIMEOUT = 1000  # msecs
 
@@ -46,14 +47,23 @@ def main():
     # get sensor id
     parser = ArgumentParser()
     parser.add_argument("-id", "--id", type=int, default=1)
+    parser.add_argument("-ip1", "--ip1", type=str, default="localhost")
+    parser.add_argument("-ip2", "--ip2", type=str, default="localhost")
+    parser.add_argument("-u", "--username", type=str, default="petbangert")
     args = parser.parse_args()
 
     # connect to server
     server = ['tcp://localhost:5001', 'tcp://localhost:5002']
+    server_ips = [args.ip1, args.ip2]
     server_nbr = 0
     ctx = zmq.Context()
     client = ctx.socket(zmq.DEALER)
-    client.connect(server[server_nbr])
+    
+    if args.ip1 != 'localhost' and args.ip2 != 'localhost':
+        ssh.tunnel_connection(client, server[server_nbr],'{}@{}'.format(args.username,server_ips[server_nbr]))
+    else:
+        client.connect(server[server_nbr])   
+    
     poller = zmq.Poller()
     poller.register(client, zmq.POLLIN)
 
@@ -96,7 +106,10 @@ def main():
                 client = ctx.socket(zmq.DEALER)
                 poller.register(client, zmq.POLLIN)
                 # reconnect
-                client.connect(server[server_nbr])
+                if args.ip1 != 'localhost' and args.ip2 != 'localhost':
+                    ssh.tunnel_connection(client, server[server_nbr],'{}@{}'.format(args.username,server_ips[server_nbr]))
+                else:
+                    client.connect(server[server_nbr])
                 break
             else: # no more messages available
                 break

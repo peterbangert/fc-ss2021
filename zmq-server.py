@@ -11,6 +11,7 @@ import copy
 import os
 import sys
 import subprocess
+from zmq import ssh
 
 STATE_PRIMARY = 1
 STATE_BACKUP = 2
@@ -211,7 +212,13 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-p", "--primary", action="store_true", default=False)
     group.add_argument("-b", "--backup", action="store_true", default=False)
+    parser.add_argument("-ip", "--ip", type=str, default="localhost")
+    parser.add_argument("-u", "--username", type=str, default="petbangert")
+    parser.add_argument("-rd", "--rsyncdir", type=str, default="./fc-ss2021")
     args = parser.parse_args()
+
+    rsync_command = "rsync -az replica_client_response_acks.json  replica_client_responses.json  " \
+                    "replica_messages.json  replica_sequence.txt " + args.username + "@" + args.ip + ":" + args.rsyncdir
 
     ctx = zmq.Context()
     statepub = ctx.socket(zmq.PUB)
@@ -237,13 +244,23 @@ def main():
         print("I: Primary master, waiting for backup (slave)")
         frontend.bind("tcp://*:5001")
         statepub.bind("tcp://*:5003")
-        statesub.connect("tcp://localhost:5004")
+        
+        if args.ip != 'localhost':
+            ssh.tunnel_connection(statesub, "tcp://localhost:5004", '{}@{}'.format(args.username,args.ip))
+        else:
+            statesub.connect("tcp://localhost:5004")
+        
         fsm.state = STATE_PRIMARY
     elif args.backup:
         print("I: Backup slave, waiting for primary (master)")
         frontend.bind("tcp://*:5002")
         statepub.bind("tcp://*:5004")
-        statesub.connect("tcp://localhost:5003")
+        
+        if args.ip != 'localhost':
+            ssh.tunnel_connection(statesub, "tcp://localhost:5003", '{}@{}'.format(args.username,args.ip))
+        else:
+            statesub.connect("tcp://localhost:5003")
+        
         statesub.setsockopt_string(zmq.SUBSCRIBE, u"")
         fsm.state = STATE_BACKUP
 
@@ -313,13 +330,13 @@ def main():
 
         # BACKUP
         # Start backing up if the server is connected to a backup server and accepting client messages
-        if server_status == 4:
+        if server_status == 4 and fsm.state == 3:
             write_replica_dict("client_responses", client_responses)
             write_replica_dict("client_response_acks", client_response_acks)
             write_replica_list(client_messages)
             write_replica_number(server_sequence)
-            # TODO: RSYNC LOGIC HERE
-            # os.system("echo test")
+            # SEND REPLICATED DATA TO BACKUP
+            os.system(rsync_command)
 
         if socks.get(statesub) == zmq.POLLIN:
             msg = statesub.recv()
